@@ -53,9 +53,9 @@ def _tls_session() -> requests.Session:
         from urllib3.util.retry import Retry
         s = requests.Session()
         s.headers["User-Agent"] = _UA
-        retry = Retry(total=4, connect=4, read=2, backoff_factor=0.7,
-                      status_forcelist=[429, 500, 502, 503, 504],
-                      allowed_methods=["GET"])
+        retry = Retry(total=3, connect=3, read=2, backoff_factor=0.6,
+                      status_forcelist=[500, 502, 503, 504],   # 429 handled in _fetch
+                      allowed_methods=["GET"], raise_on_status=False)
         s.mount("https://", requests.adapters.HTTPAdapter(
             pool_connections=20, pool_maxsize=40, max_retries=retry))
         _local.s = s
@@ -261,6 +261,11 @@ async def api_search(request: Request) -> JSONResponse:
     except Exception as exc:                          # noqa: BLE001
         errors["_"] = str(exc)[:200]
 
+    # AIC's IIIF is generous; Harvard's rate-limits a shared server IP hard, so
+    # lead with AIC/Cleveland - the first result is auto-opened.
+    _prio = {"aic": 0, "cleveland": 1, "met": 2, "harvard": 3}
+    results.sort(key=lambda r: _prio.get(r.get("source"), 9))
+
     self = _self(request)
     for r in results:
         if "iiif" in r:
@@ -273,25 +278,58 @@ async def api_search(request: Request) -> JSONResponse:
 
 
 # --------------------------------------------------------------- image proxy
+# Harvard's image host rate-limits a shared server IP hard (429). Throttle our
+# own requests to it: at most a few concurrent, spaced out.
+_HOST_SEM = {"nrs.harvard.edu": threading.Semaphore(3)}
+_HOST_MIN_GAP = {"nrs.harvard.edu": 0.12}
+_HOST_LAST = {}
+_HOST_LOCK = threading.Lock()
+
+
+def _throttle(url: str):
+    for host, gap in _HOST_MIN_GAP.items():
+        if host in url:
+            with _HOST_LOCK:
+                wait = gap - (time.monotonic() - _HOST_LAST.get(host, 0))
+                if wait > 0:
+                    time.sleep(wait)
+                _HOST_LAST[host] = time.monotonic()
+
+
 def _fetch(url: str) -> requests.Response:
     hdr = BROWSERISH if ("artic.edu" in url) else {}
-    last = None
-    for attempt in range(3):
-        try:
-            return _tls_session().get(url, headers=hdr, timeout=45)
-        except requests.exceptions.RequestException as e:   # SSLEOF etc.
-            last = e
-            time.sleep(0.6 * (attempt + 1))
-    raise last
+    sem = next((s for h, s in _HOST_SEM.items() if h in url), None)
+    if sem:
+        sem.acquire()
+    try:
+        last = None
+        for attempt in range(4):
+            try:
+                _throttle(url)
+                r = _tls_session().get(url, headers=hdr, timeout=45)
+                if r.status_code == 429:
+                    time.sleep(1.2 * (attempt + 1))
+                    continue
+                return r
+            except requests.exceptions.RequestException as e:   # SSLEOF etc.
+                last = e
+                time.sleep(0.7 * (attempt + 1))
+        if last:
+            raise last
+        return r
+    finally:
+        if sem:
+            sem.release()
 
 
 _CACHE: dict[str, tuple[bytes, str]] = {}
-_CACHE_MAX = 400
+_INFO_CACHE: dict[str, dict] = {}
+_CACHE_MAX = 600
 
 
 def _cache_put(key: str, body: bytes, ct: str):
     if len(_CACHE) > _CACHE_MAX:
-        for k in list(_CACHE)[:100]:
+        for k in list(_CACHE)[:150]:
             _CACHE.pop(k, None)
     _CACHE[key] = (body, ct)
 
@@ -302,10 +340,15 @@ async def iiif_info(request: Request) -> Response:
         upstream = _dec(ref)
     except Exception:
         return PlainTextResponse("bad ref", status_code=400)
-    r = await run_in_threadpool(_fetch, upstream.rstrip("/") + "/info.json")
-    if r.status_code != 200:
-        return PlainTextResponse(f"upstream {r.status_code}", status_code=502)
-    info = r.json()
+    info = _INFO_CACHE.get(upstream)
+    if info is None:
+        r = await run_in_threadpool(_fetch, upstream.rstrip("/") + "/info.json")
+        if r.status_code != 200:
+            return PlainTextResponse(f"upstream {r.status_code}", status_code=502)
+        info = r.json()
+        if len(_INFO_CACHE) < 2000:
+            _INFO_CACHE[upstream] = info
+    info = dict(info)
     info["@id"] = f"{_self(request)}/iiif/{ref}"          # tiles route back here
     if "id" in info:
         info["id"] = info["@id"]
