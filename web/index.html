@@ -18,9 +18,13 @@
   aside { background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
   .search { padding:13px; border-bottom:1px solid var(--line); }
   .search h1 { font-size:14px; letter-spacing:.15em; text-transform:uppercase; margin:0 0 9px; color:var(--accent); font-weight:600; }
-  input[type=text] { width:100%; padding:8px 10px; background:#0e0e12; border:1px solid var(--line);
+  .qrow { display:flex; gap:6px; }
+  input[type=text] { flex:1; min-width:0; padding:8px 10px; background:#0e0e12; border:1px solid var(--line);
     border-radius:6px; color:var(--text); font-size:14px; }
   input[type=text]:focus { outline:none; border-color:var(--accent); }
+  #go { background:var(--accent); color:#151006; border:none; border-radius:6px; padding:8px 12px;
+    font-size:13px; font-weight:600; cursor:pointer; }
+  #go:hover { filter:brightness(1.08); }
   .sources { display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:8px; font-size:12px; color:var(--dim); }
   .sources label { cursor:pointer; user-select:none; }
   .hint { margin-top:7px; font-size:11px; color:var(--dim); }
@@ -124,7 +128,10 @@
   <aside>
     <div class="search">
       <h1>Art Study</h1>
-      <input id="q" type="text" list="artists" placeholder="Artist name — type or pick from the list" autocomplete="off">
+      <div class="qrow">
+        <input id="q" type="text" list="artists" placeholder="Artist name — type or pick" autocomplete="off">
+        <button id="go">Search</button>
+      </div>
       <datalist id="artists">
         <option>Katsushika Hokusai</option><option>Utagawa Hiroshige</option>
         <option>Kitagawa Utamaro</option><option>Suzuki Harunobu</option>
@@ -329,8 +336,10 @@ const railThumbObs = new IntersectionObserver(function h(es) {
   }
 }, { rootMargin: '150px' });
 
+let lastQuery = '';
 async function search() {
-  const term = $('#q').value.trim(); if (!term) return;
+  const term = $('#q').value.trim(); if (!term || term === lastQuery) return;
+  lastQuery = term;
   const srcs = $$('#sources input:checked').map(c => c.value); if (!srcs.length) return;
   results.innerHTML = ''; setStatus('Searching ' + srcs.join(', ') + '…'); empty.hidden = true;
   try {
@@ -640,7 +649,13 @@ function switchTab(t) {
 $$('.rail .tabs button').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
 $('#fit').onclick = () => osdA && osdA.viewport.goHome();
 $('#present').onclick = () => document.documentElement.requestFullscreen?.();
-$('#q').addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+$('#q').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); search(); } });
+$('#q').addEventListener('change', () => search());   // fires when a datalist option is picked
+$('#q').addEventListener('input', e => {
+  // picking from the datalist inserts the whole string in one event
+  if (e.inputType == null || [...$('#artists').options].some(o => o.value === $('#q').value)) search();
+});
+$('#go').onclick = () => search();
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   if (e.key === 'ArrowLeft') open(idx - 1);
