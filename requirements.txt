@@ -1,0 +1,5 @@
+starlette>=1.6,<2
+uvicorn[standard]>=0.52
+requests>=2.34
+pillow>=12
+truststore>=0.10

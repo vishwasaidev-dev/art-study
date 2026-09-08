@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Art Study</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/openseadragon.min.js"></script>
+<style>
+  :root { --bg:#0e0e11; --panel:#17171c; --line:#2a2a33; --text:#e9e9ee; --dim:#9a9aa6; --accent:#c8a24a; }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font:13.5px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; overflow:hidden; }
+  #app { display:grid; grid-template-columns:312px minmax(0,1fr) 336px; grid-template-rows:100vh;
+    height:100vh; }
+  #app > * { min-height:0; overflow:hidden; }
+
+  aside { background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
+  .search { padding:13px; border-bottom:1px solid var(--line); }
+  .search h1 { font-size:14px; letter-spacing:.15em; text-transform:uppercase; margin:0 0 9px; color:var(--accent); font-weight:600; }
+  input[type=text] { width:100%; padding:8px 10px; background:#0e0e12; border:1px solid var(--line);
+    border-radius:6px; color:var(--text); font-size:14px; }
+  input[type=text]:focus { outline:none; border-color:var(--accent); }
+  .sources { display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:8px; font-size:12px; color:var(--dim); }
+  .sources label { cursor:pointer; user-select:none; }
+  .hint { margin-top:7px; font-size:11px; color:var(--dim); }
+  #results { overflow-y:auto; flex:1; padding:10px; display:grid;
+    grid-template-columns:1fr 1fr; gap:8px; align-content:start; grid-auto-rows:150px; }
+  .card { cursor:pointer; border:1px solid transparent; border-radius:6px; overflow:hidden;
+    background:#0e0e12; height:150px; position:relative; }
+  .card.active { border-color:var(--accent); }
+  .card.inset { box-shadow:inset 0 0 0 2px #3a6ea5; }
+  .card .thumb { height:110px; background:#1c1c22 no-repeat center/cover; }
+  .card .m { height:40px; padding:4px 7px; font-size:10.5px; color:var(--dim); line-height:1.3; overflow:hidden; }
+  .card .m b { color:var(--text); font-weight:500; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  main { position:relative; min-width:0; display:flex; flex-direction:column; height:100vh; }
+  .toolbar { display:flex; gap:6px; align-items:center; padding:7px 10px; background:#121216;
+    border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .toolbar button, .toolbar .menu > button { background:#1c1c22; color:var(--text); border:1px solid var(--line);
+    border-radius:6px; padding:5px 9px; cursor:pointer; font-size:12px; white-space:nowrap; }
+  .toolbar button:hover { border-color:var(--accent); }
+  .toolbar button.on { border-color:var(--accent); color:var(--accent); }
+  .toolbar .sep { width:1px; align-self:stretch; background:var(--line); margin:0 3px; }
+  .menu { position:relative; }
+  .menu .pop { position:absolute; top:calc(100% + 4px); left:0; background:#1c1c22; border:1px solid var(--line);
+    border-radius:8px; padding:5px; z-index:20; min-width:150px; box-shadow:0 8px 24px rgba(0,0,0,.5); }
+  .menu .pop label, .menu .pop button { display:block; width:100%; text-align:left; padding:6px 8px;
+    background:none; border:none; color:var(--text); font-size:12px; cursor:pointer; border-radius:5px; }
+  .menu .pop label:hover, .menu .pop button:hover { background:#26262e; }
+  .menu .pop label input { margin-right:7px; }
+
+  .viewers { flex:1 1 0; display:flex; min-height:0; }
+  .osd-wrap { flex:1 1 0; position:relative; min-width:0; min-height:0; background:#0a0a0c; }
+  .osd-wrap + .osd-wrap { border-left:2px solid var(--line); }
+  .osd-host { position:absolute !important; inset:0 !important; width:100% !important; height:100% !important; }
+  #view-b-wrap { display:none; }
+  main.compare #view-b-wrap { display:block; }
+  .vcap { position:absolute; left:0; right:0; bottom:0; padding:10px 14px; pointer-events:none;
+    background:linear-gradient(transparent, rgba(0,0,0,.85) 45%); font-size:12px; }
+  .vcap b { font-size:14px; display:block; }
+  .vcap .dim { color:var(--dim); }
+  .scalebar { position:absolute; left:14px; bottom:64px; pointer-events:none; font-size:10px; color:#fff;
+    text-shadow:0 1px 2px #000; }
+  .scalebar .bar { height:4px; background:#fff; border:1px solid #000; margin-bottom:2px; }
+  .pick-b { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    color:var(--dim); font-size:13px; }
+  #empty { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--dim); }
+  #status { position:absolute; top:10px; left:50%; transform:translateX(-50%); font-size:12px; color:var(--dim);
+    background:rgba(0,0,0,.65); padding:4px 12px; border-radius:20px; z-index:5; }
+
+  .rail { background:var(--panel); border-left:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
+  .rail .tabs { display:flex; border-bottom:1px solid var(--line); }
+  .rail .tabs button { flex:1; background:none; border:none; color:var(--dim); padding:9px 4px; cursor:pointer;
+    font-size:11px; letter-spacing:.08em; text-transform:uppercase; border-bottom:2px solid transparent; }
+  .rail .tabs button.on { color:var(--accent); border-bottom-color:var(--accent); }
+  .rail .body { flex:1; overflow-y:auto; padding:13px; }
+  .rec { font-size:12.5px; }
+  .rec h2 { font-size:15px; margin:0 0 2px; }
+  .rec .sub { color:var(--dim); margin-bottom:12px; }
+  .rec dl { display:grid; grid-template-columns:82px 1fr; gap:3px 10px; margin:0 0 12px; }
+  .rec dt { color:var(--dim); }
+  .rec dd { margin:0; }
+  .rec .para { margin:0 0 10px; white-space:pre-wrap; }
+  .rec .lbl { color:var(--accent); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; margin:14px 0 3px; }
+  .cite { background:#0e0e12; border:1px solid var(--line); border-radius:6px; padding:9px; font-size:11.5px;
+    line-height:1.5; margin-top:4px; }
+  .cite button { margin-top:7px; background:#1c1c22; color:var(--text); border:1px solid var(--line);
+    border-radius:5px; padding:4px 9px; cursor:pointer; font-size:11px; }
+  textarea { width:100%; min-height:150px; background:#0e0e12; border:1px solid var(--line); border-radius:6px;
+    color:var(--text); padding:9px; font:inherit; font-size:12.5px; resize:vertical; }
+  .taginput { margin-top:8px; }
+  .marklist, .setlist { list-style:none; margin:8px 0 0; padding:0; }
+  .marklist li, .setlist li { display:flex; gap:6px; align-items:center; padding:6px 4px; border-bottom:1px solid var(--line); font-size:12px; }
+  .marklist li .go { flex:1; cursor:pointer; color:var(--text); text-align:left; background:none; border:none; padding:0; }
+  .marklist li .go:hover { color:var(--accent); }
+  .x { background:none; border:none; color:var(--dim); cursor:pointer; font-size:14px; }
+  .x:hover { color:#e06; }
+  .add { background:#1c1c22; border:1px solid var(--line); border-radius:5px; color:var(--text); padding:5px 9px;
+    cursor:pointer; font-size:11.5px; }
+  .versions { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:8px; }
+  .versions .card { height:132px; }
+  .versions .card .thumb { height:94px; }
+  kbd { background:#22222a; border:1px solid var(--line); border-radius:3px; padding:0 4px; font-size:11px; }
+  .mark-pin { width:22px; height:22px; border-radius:50%; background:var(--accent); color:#111; font-weight:700;
+    display:flex; align-items:center; justify-content:center; font-size:11px; border:2px solid #fff;
+    box-shadow:0 1px 4px rgba(0,0,0,.6); transform:translate(-50%,-50%); }
+  svg.overlay { pointer-events:none; }
+  svg.overlay line { stroke:rgba(255,90,90,.6); stroke-width:1; vector-effect:non-scaling-stroke; }
+  svg.overlay line.phi { stroke:rgba(90,170,255,.65); }
+  svg.overlay line.arm { stroke:rgba(120,255,160,.45); }
+  svg#filters { position:absolute; width:0; height:0; }
+</style>
+</head>
+<body>
+<svg id="filters"><defs>
+  <filter id="f-edge"><feColorMatrix type="matrix" values="0.33 0.33 0.33 0 0  0.33 0.33 0.33 0 0  0.33 0.33 0.33 0 0  0 0 0 1 0"/>
+    <feConvolveMatrix order="3" kernelMatrix="-1 -1 -1  -1 8 -1  -1 -1 -1" preserveAlpha="true"/></filter>
+  <filter id="f-sharpen"><feConvolveMatrix order="3" preserveAlpha="true"
+    kernelMatrix="0 -0.6 0  -0.6 3.4 -0.6  0 -0.6 0"/></filter>
+</defs></svg>
+
+<div id="app">
+  <aside>
+    <div class="search">
+      <h1>Art Study</h1>
+      <input id="q" type="text" list="artists" placeholder="Artist name — type or pick from the list" autocomplete="off">
+      <datalist id="artists">
+        <option>Katsushika Hokusai</option><option>Utagawa Hiroshige</option>
+        <option>Kitagawa Utamaro</option><option>Suzuki Harunobu</option>
+        <option>Torii Kiyonaga</option><option>Katsukawa Shunshō</option>
+        <option>Utagawa Kuniyoshi</option><option>Tsukioka Yoshitoshi</option>
+        <option>Rembrandt van Rijn</option><option>Albrecht Dürer</option>
+        <option>Peter Paul Rubens</option><option>Anthony van Dyck</option>
+        <option>Francisco de Goya</option><option>Giovanni Battista Piranesi</option>
+        <option>Canaletto</option><option>William Blake</option>
+        <option>J. M. W. Turner</option><option>John Constable</option>
+        <option>Claude Monet</option><option>Édouard Manet</option>
+        <option>Edgar Degas</option><option>Pierre-Auguste Renoir</option>
+        <option>Camille Pissarro</option><option>Paul Cézanne</option>
+        <option>Georges Seurat</option><option>Paul Gauguin</option>
+        <option>Vincent van Gogh</option><option>Henri de Toulouse-Lautrec</option>
+        <option>Berthe Morisot</option><option>Mary Cassatt</option>
+        <option>Jean-François Millet</option><option>Camille Corot</option>
+        <option>Gustave Courbet</option><option>Eugène Delacroix</option>
+        <option>James McNeill Whistler</option><option>John Singer Sargent</option>
+        <option>Winslow Homer</option><option>Thomas Eakins</option>
+        <option>Käthe Kollwitz</option><option>Odilon Redon</option>
+        <option>Henri Matisse</option><option>Paul Klee</option>
+        <option>Utagawa Toyokuni</option><option>Hishikawa Moronobu</option>
+      </datalist>
+      <div class="sources" id="sources">
+        <label><input type="checkbox" value="aic" checked> Art Institute</label>
+        <label><input type="checkbox" value="harvard" checked> Harvard</label>
+        <label><input type="checkbox" value="cleveland" checked> Cleveland</label>
+        <label><input type="checkbox" value="met"> The Met <span style="opacity:.6">(slow)</span></label>
+      </div>
+      <div class="hint">Pick a work &rarr; scroll to zoom. <kbd>&larr;</kbd><kbd>&rarr;</kbd> switch &nbsp;·&nbsp; <kbd>m</kbd> mark &nbsp;·&nbsp; <kbd>c</kbd> compare</div>
+    </div>
+    <div id="results"></div>
+  </aside>
+
+  <main>
+    <div class="toolbar">
+      <button id="fit">Fit</button>
+      <button id="cmp">Compare</button>
+      <div class="menu"><button id="ovBtn">Overlay ▾</button>
+        <div class="pop" id="ovPop" hidden>
+          <label><input type="checkbox" data-ov="thirds"> Rule of thirds</label>
+          <label><input type="checkbox" data-ov="phi"> Golden section</label>
+          <label><input type="checkbox" data-ov="arm"> Diagonal armature</label>
+          <label><input type="checkbox" data-ov="center"> Centre lines</label>
+          <label><input type="checkbox" id="ovScale"> Scale bar</label>
+        </div></div>
+      <div class="menu"><button id="flBtn">Filter ▾</button>
+        <div class="pop" id="flPop" hidden>
+          <button data-fl="none">None</button>
+          <button data-fl="grayscale(1)">Grayscale</button>
+          <button data-fl="contrast(1.7) brightness(1.05)">High contrast</button>
+          <button data-fl="url(#f-sharpen)">Sharpen</button>
+          <button data-fl="url(#f-edge)">Edge detect</button>
+          <button data-fl="invert(1)">Invert</button>
+          <button data-fl="sepia(0.6) contrast(1.2)">Warm / raking</button>
+        </div></div>
+      <div class="sep"></div>
+      <button id="mark">+ Mark</button>
+      <button id="toSet">+ Set</button>
+      <button id="sync" class="on" hidden>Sync ⇄</button>
+      <div style="flex:1"></div>
+      <button id="present" title="Full screen">⤢</button>
+    </div>
+
+    <div class="viewers">
+      <div class="osd-wrap" id="view-a-wrap">
+        <div class="osd-host" id="osd"></div>
+        <svg class="overlay" id="ov-a" hidden></svg>
+        <div class="scalebar" id="sb-a" hidden><div class="bar"></div><span></span></div>
+        <div class="vcap" id="cap-a" hidden><b></b><span class="dim"></span></div>
+        <div id="empty">Search for an artist to begin.</div>
+        <div id="status" hidden></div>
+      </div>
+      <div class="osd-wrap" id="view-b-wrap">
+        <div class="osd-host" id="osd-b"></div>
+        <svg class="overlay" id="ov-b" hidden></svg>
+        <div class="vcap" id="cap-b" hidden><b></b><span class="dim"></span></div>
+        <div class="pick-b" id="pickB">Click a work in the list to compare &rarr;</div>
+      </div>
+    </div>
+  </main>
+
+  <div class="rail">
+    <div class="tabs">
+      <button data-tab="info" class="on">Record</button>
+      <button data-tab="notes">Notes</button>
+      <button data-tab="marks">Marks</button>
+      <button data-tab="sets">Sets</button>
+    </div>
+    <div class="body" id="tab-info"><div class="rec" id="rec">Select a work to see its full catalogue record.</div></div>
+    <div class="body" id="tab-notes" hidden>
+      <div class="lbl" style="margin-top:0">Notes on this work</div>
+      <textarea id="notes" placeholder="Observations, comparisons, questions…"></textarea>
+      <input type="text" id="tags" class="taginput" placeholder="tags, comma separated">
+      <div class="lbl">Other impressions / versions</div>
+      <div class="versions" id="versions"></div>
+    </div>
+    <div class="body" id="tab-marks" hidden>
+      <p class="dim" style="margin-top:0">Zoom to a passage, hit <kbd>m</kbd> or <b>+ Mark</b> to pin it with a note.</p>
+      <ul class="marklist" id="marks"></ul>
+    </div>
+    <div class="body" id="tab-sets" hidden>
+      <button class="add" id="newSet">+ New study set</button>
+      <div id="setsWrap"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const esc = s => (s||'').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const results = $('#results'), statusEl = $('#status'), empty = $('#empty');
+let items = [], idx = -1, cur = null;              // cur = current work object
+let osdA = null, osdB = null, bWork = null, compareOn = false, syncOn = true, syncing = false;
+let session = { works: {}, sets: {} }, saveTimer = null;
+
+function setStatus(t) { if (t) { statusEl.textContent = t; statusEl.hidden = false; } else statusEl.hidden = true; }
+const workKey = w => w && (w.key || `${w.source}:${w.id}`);
+
+/* ---------- session persistence (server file + localStorage mirror) ---------- */
+const LS_KEY = 'art-study-session';
+function countEntries(s) { return Object.keys(s.works || {}).length + Object.keys(s.sets || {}).length; }
+async function loadSession() {
+  let server = null, local = null;
+  try { const d = await (await fetch('/api/session')).json(); if (d.ok) server = d.session; } catch (e) {}
+  try { local = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) {}
+  // whichever has more saved material wins (server FS may have been wiped on redeploy)
+  session = (local && countEntries(local) > countEntries(server || {})) ? local : (server || local || { works: {}, sets: {} });
+  session.works = session.works || {}; session.sets = session.sets || {};
+  renderSets();
+}
+function saveSession() {
+  clearTimeout(saveTimer);
+  try { localStorage.setItem(LS_KEY, JSON.stringify(session)); } catch (e) {}
+  saveTimer = setTimeout(() => fetch('/api/session', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(session)
+  }).catch(() => {}), 600);
+}
+function workRec(w) {
+  const k = workKey(w);
+  if (!session.works[k]) session.works[k] = { meta: {title:w.title, artist:w.artist, museum:w.museum, thumb:w.thumb, key:k, source:w.source, id:w.id}, notes:'', tags:[], marks:[] };
+  return session.works[k];
+}
+
+/* ---------- viewer init ---------- */
+function mkViewer(hostId) {
+  return OpenSeadragon({
+    element: $('#'+hostId),
+    prefixUrl: 'https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/images/',
+    showNavigationControl: false, showNavigator: true, navigatorPosition: 'BOTTOM_RIGHT',
+    navigatorSizeRatio: 0.12, navigatorBackground: '#000', navigatorBorderColor: '#333', navigatorAutoFade: false,
+    gestureSettingsMouse: { clickToZoom: false, dblClickToZoom: true, scrollToZoom: true },
+    maxZoomPixelRatio: 5, animationTime: 0.8, springStiffness: 6.5, visibilityRatio: 1, minZoomImageRatio: 0.85,
+  });
+}
+function initViewers() {
+  const h = $('#osd');
+  if (!h.clientWidth || !h.clientHeight) { requestAnimationFrame(initViewers); return; }
+  osdA = mkViewer('osd');
+  osdA.addHandler('open', () => { setStatus(''); refreshOverlay('a'); refreshScale(); drawPins(); });
+  osdA.addHandler('open-failed', () => setStatus('image could not be loaded'));
+  osdA.addHandler('tile-drawn', () => setStatus(''));
+  osdA.addHandler('animation', () => { refreshScale(); if (compareOn && syncOn) mirror(osdA, osdB); });
+  osdA.addHandler('zoom', () => { if (compareOn && syncOn) mirror(osdA, osdB); });
+  new ResizeObserver(() => { try { osdA.viewport && osdA.viewport.resize(); refreshOverlay('a'); refreshScale(); } catch(e){} }).observe(h);
+  if (pending != null) { const i = pending; pending = null; open(i); }
+}
+let pending = null;
+
+function ensureB() {
+  if (osdB) return;
+  osdB = mkViewer('osd-b');
+  osdB.addHandler('open', () => refreshOverlay('b'));
+  osdB.addHandler('animation', () => { if (compareOn && syncOn) mirror(osdB, osdA); });
+  osdB.addHandler('zoom', () => { if (compareOn && syncOn) mirror(osdB, osdA); });
+  new ResizeObserver(() => { try { osdB.viewport && osdB.viewport.resize(); refreshOverlay('b'); } catch(e){} }).observe($('#osd-b'));
+}
+function mirror(from, to) {
+  if (!from || !to || !from.world.getItemCount() || !to.world.getItemCount() || syncing) return;
+  syncing = true;
+  try {
+    const c = from.viewport.getCenter(true), z = from.viewport.getZoom(true);
+    if (c && isFinite(z)) { to.viewport.panTo(c, true); to.viewport.zoomTo(z, null, true); }
+  } catch (e) {}
+  requestAnimationFrame(() => syncing = false);
+}
+
+/* ---------- search + grid ---------- */
+const thumbObs = new IntersectionObserver(function h(es) {
+  for (const e of es) if (e.isIntersecting) {
+    const t = e.target;
+    if (t.dataset.src) { t.style.backgroundImage = `url('${t.dataset.src}')`; t.removeAttribute('data-src'); }
+    thumbObs.unobserve(t);
+  }
+}, { root: results, rootMargin: '150px' });
+const railThumbObs = new IntersectionObserver(function h(es) {
+  for (const e of es) if (e.isIntersecting) {
+    const t = e.target;
+    if (t.dataset.src) { t.style.backgroundImage = `url('${t.dataset.src}')`; t.removeAttribute('data-src'); }
+    railThumbObs.unobserve(t);
+  }
+}, { rootMargin: '150px' });
+
+async function search() {
+  const term = $('#q').value.trim(); if (!term) return;
+  const srcs = $$('#sources input:checked').map(c => c.value); if (!srcs.length) return;
+  results.innerHTML = ''; setStatus('Searching ' + srcs.join(', ') + '…'); empty.hidden = true;
+  try {
+    const d = await (await fetch(`/api/search?artist=${encodeURIComponent(term)}&source=${srcs.join(',')}&limit=24`)).json();
+    if (!d.ok) { setStatus(d.error || 'search failed'); return; }
+    items = d.results;
+    setStatus(items.length ? '' : `No public-domain works for “${term}”.`);
+    render(); if (items.length) open(0);
+  } catch (e) { setStatus('error: ' + e.message); }
+}
+function render() {
+  results.innerHTML = '';
+  items.forEach((it, i) => {
+    const c = document.createElement('div');
+    c.className = 'card' + (i === idx ? ' active' : '');
+    c.innerHTML = `<div class="thumb" data-src="${it.thumb}"></div>
+      <div class="m"><b>${esc(it.title)}</b>${esc(it.museum.replace('The ',''))} · ${esc(it.date||'')}</div>`;
+    c.onclick = e => { if (e.shiftKey) setCompareB(it); else open(i); };
+    results.appendChild(c); thumbObs.observe(c.querySelector('.thumb'));
+  });
+}
+
+/* ---------- open a work ---------- */
+function open(i) {
+  if (i < 0 || i >= items.length) return;
+  idx = i; cur = items[i]; empty.hidden = true; setStatus('Loading image…');
+  if (!osdA) { pending = i; return; }
+  const w = cur;
+  try { osdA.open(w.tilesource); } catch (e) { setStatus('viewer error'); }
+  capOf('a', w); loadNotes(w); renderMarks();
+  // let the viewer grab the network first, then load the side panels
+  clearTimeout(open._t);
+  open._t = setTimeout(() => { if (cur === w) { loadRecord(w); loadVersions(w); } }, 900);
+  requestAnimationFrame(() => {
+    $$('#results .card').forEach((el, n) => el.classList.toggle('active', n === i));
+    results.children[i]?.scrollIntoView({ block: 'nearest' });
+  });
+}
+function capOf(which, w) {
+  const el = $('#cap-'+which); el.hidden = false;
+  el.querySelector('b').textContent = w.title;
+  const bits = [w.artist, w.date, w.museum, w.dims].filter(Boolean).join('  ·  ');
+  el.querySelector('.dim').textContent = bits;
+}
+
+/* ---------- full record ---------- */
+async function loadRecord(w) {
+  const rec = $('#rec'); rec.innerHTML = '<span class="dim">loading record…</span>';
+  try {
+    const d = await (await fetch(`/api/detail?source=${w.source}&id=${w.id}`)).json();
+    if (!d.ok) { rec.innerHTML = '<span class="dim">record unavailable</span>'; return; }
+    const x = d.detail, row = (k, v) => v ? `<dt>${k}</dt><dd>${esc(v)}</dd>` : '';
+    rec.innerHTML = `
+      <h2>${esc(x.title||w.title)}</h2>
+      <div class="sub">${esc([x.artist, x.artist_bio].filter(Boolean).join(' · '))}</div>
+      <dl>
+        ${row('Date', x.date)} ${row('Medium', x.medium)} ${row('Dimensions', x.dims)}
+        ${row('Credit', x.credit)} ${row('Accession', x.accession)} ${row('Classification', x.classification)}
+        ${row('Culture', x.culture)} ${row('Period', x.period)} ${row('Department', x.department)}
+        ${row('Gallery', x.gallery)} ${row('Inscriptions', x.inscriptions)}
+      </dl>
+      ${x.description ? `<div class="lbl">Catalogue note</div><p class="para">${esc(x.description)}</p>` : ''}
+      ${x.context ? `<div class="lbl">Context</div><p class="para">${esc(x.context)}</p>` : ''}
+      ${x.provenance ? `<div class="lbl">Provenance</div><p class="para">${esc(x.provenance)}</p>` : ''}
+      ${x.exhibitions ? `<div class="lbl">Exhibited</div><p class="para">${esc(x.exhibitions)}</p>` : ''}
+      ${x.literature ? `<div class="lbl">Literature</div><p class="para">${esc(x.literature)}</p>` : ''}
+      ${x.fun_fact ? `<div class="lbl">Did you know</div><p class="para">${esc(x.fun_fact)}</p>` : ''}
+      <div class="lbl">Citation</div>
+      <div class="cite">${esc(x.citation)}<br><button id="copyCite">Copy</button>
+        ${x.page ? ` <a href="${x.page}" target="_blank" rel="noopener" style="color:var(--accent);font-size:11px">museum page ↗</a>` : ''}</div>`;
+    $('#copyCite').onclick = () => { navigator.clipboard.writeText(x.citation); $('#copyCite').textContent = 'Copied'; };
+  } catch (e) { rec.innerHTML = '<span class="dim">record error</span>'; }
+}
+
+/* ---------- notes + tags ---------- */
+function loadNotes(w) {
+  const r = workRec(w);
+  $('#notes').value = r.notes || '';
+  $('#tags').value = (r.tags || []).join(', ');
+}
+$('#notes').addEventListener('input', () => { if (cur) { workRec(cur).notes = $('#notes').value; saveSession(); } });
+$('#tags').addEventListener('input', () => { if (cur) { workRec(cur).tags = $('#tags').value.split(',').map(s=>s.trim()).filter(Boolean); saveSession(); } });
+
+/* ---------- versions ---------- */
+async function loadVersions(w) {
+  const box = $('#versions'); box.innerHTML = '<span class="dim">searching…</span>';
+  try {
+    const d = await (await fetch(`/api/versions?title=${encodeURIComponent(w.title)}&exclude=${encodeURIComponent(workKey(w))}`)).json();
+    if (!d.results.length) { box.innerHTML = '<span class="dim">no other impressions found</span>'; return; }
+    box.innerHTML = '';
+    d.results.forEach(v => {
+      const c = document.createElement('div'); c.className = 'card';
+      c.innerHTML = `<div class="thumb" data-src="${v.thumb}"></div>
+        <div class="m"><b>${esc(v.museum.replace('The ',''))}</b>${esc(v.date||'')}</div>`;
+      c.title = 'Shift-click to compare · click to open';
+      c.onclick = e => e.shiftKey ? setCompareB(v) : openWork(v);
+      box.appendChild(c); railThumbObs.observe(c.querySelector('.thumb'));
+    });
+  } catch (e) { box.innerHTML = '<span class="dim">error</span>'; }
+}
+function openWork(w) {           // open an ad-hoc work (from versions) in panel A
+  items = [w, ...items]; idx = 0; cur = w; render();
+  try { osdA.open(w.tilesource); } catch(e){}
+  capOf('a', w); loadRecord(w); loadNotes(w); renderMarks(); loadVersions(w);
+}
+
+/* ---------- compare ---------- */
+$('#cmp').onclick = () => toggleCompare();
+function toggleCompare(force) {
+  compareOn = force != null ? force : !compareOn;
+  $('main').classList.toggle('compare', compareOn);
+  $('#cmp').classList.toggle('on', compareOn);
+  $('#sync').hidden = !compareOn;
+  if (compareOn) { ensureB(); requestAnimationFrame(() => { osdB.viewport && osdB.viewport.resize(); if (bWork) refreshOverlay('b'); }); }
+}
+function setCompareB(w) {
+  toggleCompare(true); ensureB(); bWork = w;
+  $('#pickB').style.display = 'none';
+  try { osdB.open(w.tilesource); } catch(e){}
+  capOf('b', w);
+  $$('#results .card, #versions .card').forEach(el => el.classList.remove('inset'));
+}
+$('#sync').onclick = () => { syncOn = !syncOn; $('#sync').classList.toggle('on', syncOn); };
+
+/* ---------- overlays ---------- */
+const ovState = { thirds:false, phi:false, arm:false, center:false };
+$('#ovBtn').onclick = () => $('#ovPop').hidden = !$('#ovPop').hidden;
+$('#flBtn').onclick = () => $('#flPop').hidden = !$('#flPop').hidden;
+document.addEventListener('click', e => {
+  if (!e.target.closest('.menu')) { $('#ovPop').hidden = true; $('#flPop').hidden = true; }
+});
+$$('#ovPop input[data-ov]').forEach(cb => cb.onchange = () => {
+  ovState[cb.dataset.ov] = cb.checked; refreshOverlay('a'); refreshOverlay('b');
+});
+$('#ovScale').onchange = () => { $('#sb-a').hidden = !$('#ovScale').checked; refreshScale(); };
+
+function imgToPixel(host, ix, iy) {
+  const it = host.world.getItemAt(0);
+  const vp = it.imageToViewportCoordinates(new OpenSeadragon.Point(ix, iy));
+  return host.viewport.pixelFromPoint(vp, true);
+}
+
+// One SVG per viewer, added as an OSD overlay locked to the image rect so it
+// pans/zooms with the artwork - OSD does the positioning.
+const ovEl = { a: null, b: null };
+function refreshOverlay(which) {
+  const host = which === 'a' ? osdA : osdB;
+  if (!host) return;
+  const any = Object.values(ovState).some(Boolean);
+  if (ovEl[which]) { try { host.removeOverlay(ovEl[which]); } catch (e) {} ovEl[which] = null; }
+  if (!any || !host.world.getItemCount()) return;
+  const it = host.world.getItemAt(0), b = it.getBounds();     // bounds in viewport units
+  const AR = b.height / b.width, W = 1000, H = W * AR, L = [];
+  const ln = (x1, y1, x2, y2, cls = '') => L.push(`<line class="${cls}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`);
+  if (ovState.thirds) [1/3, 2/3].forEach(f => { ln(W*f, 0, W*f, H); ln(0, H*f, W, H*f); });
+  if (ovState.phi)    [0.382, 0.618].forEach(f => { ln(W*f, 0, W*f, H, 'phi'); ln(0, H*f, W, H*f, 'phi'); });
+  if (ovState.center) { ln(W/2, 0, W/2, H); ln(0, H/2, W, H/2); }
+  if (ovState.arm) { ln(0,0,W,H,'arm'); ln(W,0,0,H,'arm'); ln(W/2,0,0,H,'arm'); ln(W/2,0,W,H,'arm');
+                     ln(0,H/2,W,0,'arm'); ln(0,H/2,W,H,'arm'); }
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.style.cssText = 'width:100%;height:100%;overflow:visible';
+  svg.innerHTML = L.join('');
+  svg.classList.add('overlay');
+  host.addOverlay({ element: svg, location: new OpenSeadragon.Rect(0, 0, 1, b.height) });
+  ovEl[which] = svg;
+}
+
+/* ---------- scale bar ---------- */
+function parseCm(dims) {
+  const m = (dims||'').match(/([\d.]+)\s*[x×by]+\s*([\d.]+)\s*cm/i);
+  return m ? Math.max(parseFloat(m[1]), parseFloat(m[2])) : null;   // longest side, cm
+}
+function refreshScale() {
+  try {
+    const el = $('#sb-a');
+    if (!$('#ovScale').checked) { el.hidden = true; return; }
+    const it = osdA && osdA.world.getItemCount() ? osdA.world.getItemAt(0) : null;
+    const cm = cur && parseCm(cur.dims);
+    if (!it || !cm) { el.hidden = true; return; }
+    const p0 = imgToPixel(osdA, 0, 0), p1 = imgToPixel(osdA, it.getContentSize().x, 0);
+    const pxPerCm = Math.abs(p1.x - p0.x) / cm;
+    if (!isFinite(pxPerCm) || pxPerCm <= 0) { el.hidden = true; return; }
+    const nice = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
+    const pick = nice.find(n => n * pxPerCm >= 70) || 100;
+    el.hidden = false;
+    el.querySelector('.bar').style.width = (pick * pxPerCm) + 'px';
+    el.querySelector('span').textContent = pick < 1 ? (pick * 10) + ' mm' : pick + ' cm';
+  } catch (e) {}
+}
+
+/* ---------- filters ---------- */
+$$('#flPop button[data-fl]').forEach(b => b.onclick = () => {
+  const v = b.dataset.fl === 'none' ? '' : b.dataset.fl;
+  $$('.osd-host .openseadragon-canvas').forEach(c => c.style.filter = v);
+  $('#flBtn').classList.toggle('on', !!v);
+  $('#flPop').hidden = true;
+});
+
+/* ---------- marks / bookmarks ---------- */
+$('#mark').onclick = () => addMark();
+function addMark() {
+  if (!cur || !osdA.world.getItemCount()) return;
+  const label = prompt('Note for this passage:', '');
+  if (label === null) return;
+  const c = osdA.viewport.getCenter(true);
+  workRec(cur).marks.push({ id: Date.now(), label, x: c.x, y: c.y, z: osdA.viewport.getZoom(true) });
+  saveSession(); renderMarks(); drawPins(); switchTab('marks');
+}
+function renderMarks() {
+  const ul = $('#marks'); ul.innerHTML = '';
+  const marks = cur ? workRec(cur).marks : [];
+  if (!marks.length) { ul.innerHTML = '<li class="dim">no marks yet</li>'; return; }
+  marks.forEach((m, n) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<b style="color:var(--accent)">${n+1}</b>
+      <button class="go">${esc(m.label || '(no note)')}</button><button class="x" title="delete">×</button>`;
+    li.querySelector('.go').onclick = () => {
+      osdA.viewport.panTo(new OpenSeadragon.Point(m.x, m.y)); osdA.viewport.zoomTo(m.z);
+    };
+    li.querySelector('.x').onclick = () => { workRec(cur).marks.splice(n,1); saveSession(); renderMarks(); drawPins(); };
+    ul.appendChild(li);
+  });
+}
+let pinEls = [];
+function drawPins() {
+  if (!osdA || !osdA.world.getItemCount()) return;
+  pinEls.forEach(el => { try { osdA.removeOverlay(el); } catch (e) {} });
+  pinEls = [];
+  const marks = cur ? workRec(cur).marks : [];
+  marks.forEach((m, n) => {
+    try {
+      const d = document.createElement('div'); d.className = 'mark-pin'; d.textContent = n + 1;
+      osdA.addOverlay({ element: d, location: new OpenSeadragon.Point(m.x, m.y), placement: 'CENTER' });
+      pinEls.push(d);
+    } catch (e) {}
+  });
+}
+
+/* ---------- sets ---------- */
+$('#toSet').onclick = () => {
+  if (!cur) return;
+  const names = Object.keys(session.sets);
+  let name = prompt(`Add “${cur.title.slice(0,40)}” to which set?\nExisting: ${names.join(', ') || '(none)'}\nType a name:`, names[0] || 'Study set 1');
+  if (!name) return;
+  (session.sets[name] = session.sets[name] || []);
+  const k = workKey(cur);
+  if (!session.sets[name].includes(k)) session.sets[name].push(k);
+  workRec(cur); saveSession(); renderSets(); switchTab('sets');
+};
+$('#newSet').onclick = () => { const n = prompt('New study set name:'); if (n) { session.sets[n] = session.sets[n]||[]; saveSession(); renderSets(); } };
+function renderSets() {
+  const wrap = $('#setsWrap'); wrap.innerHTML = '';
+  const names = Object.keys(session.sets);
+  if (!names.length) { wrap.innerHTML = '<p class="dim">No study sets yet. Use <b>+ Set</b> on a work.</p>'; return; }
+  names.forEach(name => {
+    const keys = session.sets[name];
+    const div = document.createElement('div'); div.style.margin = '12px 0';
+    div.innerHTML = `<div class="lbl" style="margin:0">${esc(name)} <span class="dim">(${keys.length})</span></div>
+      <div class="versions"></div>
+      <button class="add" data-x="export">Export worksheet</button>
+      <button class="add" data-x="del">Delete set</button>`;
+    const g = div.querySelector('.versions');
+    keys.forEach(k => {
+      const w = (session.works[k] && session.works[k].meta) || { title:k, museum:'' };
+      const c = document.createElement('div'); c.className = 'card';
+      c.innerHTML = `<div class="thumb" style="background-image:url('${w.thumb||''}')"></div>
+        <div class="m"><b>${esc(w.title||k)}</b>${esc((w.museum||'').replace('The ',''))}</div>`;
+      c.onclick = () => w.source && openWork({ ...w, source:w.source, id:w.id, tilesource:null, key:k }) ;
+      g.appendChild(c);
+    });
+    div.querySelector('[data-x=del]').onclick = () => { if (confirm(`Delete set “${name}”?`)) { delete session.sets[name]; saveSession(); renderSets(); } };
+    div.querySelector('[data-x=export]').onclick = () => exportWorksheet(name, keys);
+    wrap.appendChild(div);
+  });
+}
+async function exportWorksheet(name, keys) {
+  const rows = [];
+  for (const k of keys) {
+    const meta = (session.works[k] && session.works[k].meta) || {};
+    let cite = '', x = {};
+    try { const d = await (await fetch(`/api/detail?source=${meta.source}&id=${meta.id}`)).json(); if (d.ok) { x = d.detail; cite = d.detail.citation; } } catch(e){}
+    const note = (session.works[k] && session.works[k].notes) || '';
+    rows.push(`<div class="w"><img src="${meta.thumb||''}"><div><h3>${esc(x.title||meta.title||'')}</h3>
+      <p>${esc([x.artist, x.date, x.medium, x.dims].filter(Boolean).join(' · '))}</p>
+      <p class="c">${esc(cite)}</p>${note?`<p class="n">${esc(note)}</p>`:''}</div></div>`);
+  }
+  const w = window.open('', '_blank');
+  w.document.write(`<title>${esc(name)}</title><style>
+    body{font:13px/1.5 Georgia,serif;max-width:820px;margin:32px auto;color:#111}
+    h1{border-bottom:2px solid #111;padding-bottom:6px}
+    .w{display:flex;gap:16px;margin:18px 0;page-break-inside:avoid}
+    .w img{width:200px;height:200px;object-fit:contain;background:#f2f2f2}
+    h3{margin:0 0 3px} p{margin:2px 0} .c{color:#444;font-size:12px} .n{background:#f6f2e6;padding:6px 9px;font-size:12px}
+    @media print{a{display:none}}</style>
+    <h1>${esc(name)}</h1>${rows.join('')}
+    <p><a href="#" onclick="print()">Print / Save as PDF</a></p>`);
+  w.document.close();
+}
+
+/* ---------- tabs, keys, misc ---------- */
+function switchTab(t) {
+  $$('.rail .tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  ['info','notes','marks','sets'].forEach(n => $('#tab-'+n).hidden = n !== t);
+}
+$$('.rail .tabs button').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+$('#fit').onclick = () => osdA && osdA.viewport.goHome();
+$('#present').onclick = () => document.documentElement.requestFullscreen?.();
+$('#q').addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'ArrowLeft') open(idx - 1);
+  if (e.key === 'ArrowRight') open(idx + 1);
+  if (e.key === 'm') addMark();
+  if (e.key === 'c') toggleCompare();
+  if (e.key === 'f') osdA && osdA.viewport.goHome();
+});
+
+initViewers(); loadSession(); $('#q').focus();
+</script>
+</body>
+</html>
