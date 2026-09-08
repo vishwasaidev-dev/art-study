@@ -261,20 +261,41 @@ async def api_search(request: Request) -> JSONResponse:
     except Exception as exc:                          # noqa: BLE001
         errors["_"] = str(exc)[:200]
 
-    # AIC's IIIF is generous; Harvard's rate-limits a shared server IP hard, so
-    # lead with AIC/Cleveland - the first result is auto-opened.
     _prio = {"aic": 0, "cleveland": 1, "met": 2, "harvard": 3}
     results.sort(key=lambda r: _prio.get(r.get("source"), 9))
+    _wire(results, _self(request), _is_local(request))
+    return JSONResponse({"ok": True, "count": len(results), "results": results, "errors": errors})
 
-    self = _self(request)
+
+def _is_local(request: Request) -> bool:
+    h = request.headers.get("host", "")
+    return h.startswith(("127.0.0.1", "localhost", "0.0.0.0"))
+
+
+# On a datacenter host (Heroku) AIC's Cloudflare 403s image assets and Harvard
+# 429s a shared IP - but a real browser on a home connection loads both fine.
+# So when deployed, hand the browser direct museum URLs for AIC/Harvard tiles
+# (AIC's info.json still goes through the proxy, keeping its real @id so tiles
+# resolve straight to www.artic.edu). Cleveland/Met never send CORS and their
+# plain CDNs don't block datacenters, so those stay fully proxied. Running
+# locally, AIC's Cloudflare dislikes a localhost referer, so proxy everything.
+def _wire(results, self, local):
     for r in results:
-        if "iiif" in r:
-            r["tilesource"] = f"{self}/iiif/{_enc(r['iiif'])}/info.json"
+        src, iiif, thumb = r.get("source"), r.get("iiif"), r.get("thumb")
+        if iiif and src == "harvard" and not local:
+            r["tilesource"] = iiif.rstrip("/") + "/info.json"
+            r["thumb"] = iiif.rstrip("/") + "/full/400,/0/default.jpg"
+        elif iiif and src == "aic" and not local:
+            r["tilesource"] = f"{self}/iiif/{_enc(iiif)}/info.json?keepid=1"
+            r["thumb"] = iiif.rstrip("/") + "/full/400,/0/default.jpg"
+        elif iiif:
+            r["tilesource"] = f"{self}/iiif/{_enc(iiif)}/info.json"
+            if thumb:
+                r["thumb"] = f"{self}/img/{_enc(thumb)}"
         elif "image" in r:
             r["tilesource"] = {"type": "image", "url": f"{self}/img/{_enc(r['image'])}"}
-        if r.get("thumb"):
-            r["thumb"] = f"{self}/img/{_enc(r['thumb'])}"       # proxy so the browser can load it
-    return JSONResponse({"ok": True, "count": len(results), "results": results, "errors": errors})
+            if thumb:
+                r["thumb"] = f"{self}/img/{_enc(thumb)}"
 
 
 # --------------------------------------------------------------- image proxy
@@ -349,9 +370,10 @@ async def iiif_info(request: Request) -> Response:
         if len(_INFO_CACHE) < 2000:
             _INFO_CACHE[upstream] = info
     info = dict(info)
-    info["@id"] = f"{_self(request)}/iiif/{ref}"          # tiles route back here
-    if "id" in info:
-        info["id"] = info["@id"]
+    if request.query_params.get("keepid") != "1":
+        info["@id"] = f"{_self(request)}/iiif/{ref}"      # tiles route back through the proxy
+        if "id" in info:
+            info["id"] = info["@id"]
     return JSONResponse(info, headers={"Access-Control-Allow-Origin": "*"})
 
 
@@ -576,14 +598,7 @@ async def api_versions(request: Request) -> JSONResponse:
             continue
         seen.add(r["key"])
         out.append(r)
-    self = _self(request)
-    for r in out:
-        if "iiif" in r:
-            r["tilesource"] = f"{self}/iiif/{_enc(r['iiif'])}/info.json"
-        elif "image" in r:
-            r["tilesource"] = {"type": "image", "url": f"{self}/img/{_enc(r['image'])}"}
-        if r.get("thumb"):
-            r["thumb"] = f"{self}/img/{_enc(r['thumb'])}"
+    _wire(out, _self(request), _is_local(request))
     return JSONResponse({"ok": True, "results": out[:12]})
 
 

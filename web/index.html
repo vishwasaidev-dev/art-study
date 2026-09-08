@@ -282,6 +282,7 @@ function mkViewer(hostId) {
   return OpenSeadragon({
     element: $('#'+hostId),
     prefixUrl: 'https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/images/',
+    crossOriginPolicy: 'Anonymous',
     showNavigationControl: false, showNavigator: true, navigatorPosition: 'BOTTOM_RIGHT',
     navigatorSizeRatio: 0.12, navigatorBackground: '#000', navigatorBorderColor: '#333', navigatorAutoFade: false,
     gestureSettingsMouse: { clickToZoom: false, dblClickToZoom: true, scrollToZoom: true },
