@@ -91,7 +91,11 @@ def _dec(ref: str) -> str:
 
 
 def _self(request: Request) -> str:
-    return f"http://{request.headers.get('host', f'127.0.0.1:{PORT}')}"
+    # behind Heroku/other proxies the dyno sees http but the browser is on
+    # https - a http:// tilesource URL is then blocked as mixed content
+    host = request.headers.get("host", f"127.0.0.1:{PORT}")
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme or "http"
+    return f"{proto.split(',')[0].strip()}://{host}"
 
 
 def _name_match(query: str, candidate: str) -> bool:
