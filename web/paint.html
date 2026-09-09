@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Impasto — oil paint studio</title>
+<style>
+  :root{
+    --bg:#1a1712; --panel:#242019; --ink:#efe9df; --muted:#a89f8d;
+    --line:#3a342a; --accent:#d8a24a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font:13px/1.45 system-ui,Segoe UI,Roboto,sans-serif;overflow:hidden}
+  #wrap{display:flex;height:100vh;width:100vw}
+  /* ---- sidebar ---- */
+  aside{width:270px;flex:0 0 270px;background:var(--panel);border-right:1px solid var(--line);
+        overflow-y:auto;padding:14px 14px 40px}
+  aside h1{font-size:14px;letter-spacing:.14em;text-transform:uppercase;margin:2px 0 2px;color:var(--accent)}
+  aside .sub{color:var(--muted);font-size:11px;margin-bottom:14px}
+  .topnav{display:flex;gap:6px;margin:6px 0 10px;font-size:11px}
+  .topnav a,.topnav .cur{padding:3px 9px;border-radius:999px;text-decoration:none}
+  .topnav a{color:var(--muted);border:1px solid var(--line)}
+  .topnav a:hover{border-color:var(--accent);color:var(--accent)}
+  .topnav .cur{color:var(--accent);border:1px solid var(--accent);background:#332a1a}
+  .grp{border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:12px;background:#221e17}
+  .grp h2{font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin:0 0 9px}
+  .row{margin:9px 0}
+  .row label{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink);margin-bottom:3px}
+  .row label span{color:var(--muted)}
+  input[type=range]{width:100%;accent-color:var(--accent);height:16px}
+  .media{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .media button, .act button{width:100%;padding:7px 6px;border:1px solid var(--line);background:#2b261e;color:var(--ink);
+        border-radius:6px;cursor:pointer;font-size:11.5px}
+  .media button{background:#2b261e}
+  .media button.on{border-color:var(--accent);color:var(--accent);background:#332a1a}
+  .media button:hover,.act button:hover{border-color:var(--accent)}
+  .act{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .act button{background:#2b261e}
+  .swatches{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-top:4px}
+  .swatches i{display:block;aspect-ratio:1;border-radius:4px;cursor:pointer;border:2px solid transparent}
+  .swatches i.on{border-color:#fff}
+  .colorline{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .colorline input[type=color]{width:38px;height:28px;padding:0;border:1px solid var(--line);background:none;border-radius:5px}
+  .chk{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);margin-top:8px;cursor:pointer}
+  .chk input{accent-color:var(--accent)}
+  /* ---- stage ---- */
+  main{flex:1;position:relative;display:flex;align-items:center;justify-content:center;
+       background:repeating-conic-gradient(#201c16 0% 25%,#1b1712 0% 50%) 50%/22px 22px}
+  #stageBox{display:inline-block;position:relative;line-height:0;box-shadow:0 18px 60px #000a, 0 0 0 1px #0006}
+  canvas{display:block;max-width:100%;max-height:88vh;touch-action:none;cursor:crosshair;background:#c9c3b4}
+  #sun{position:absolute;width:26px;height:26px;border-radius:50%;
+       background:radial-gradient(circle at 35% 35%,#fff,#ffd27a 45%,#c98a20);
+       box-shadow:0 0 16px 5px #ffcf7a88;border:1px solid #fff8;cursor:grab;transform:translate(-50%,-50%);
+       z-index:5;user-select:none}
+  #sun.drag{cursor:grabbing}
+  #hint{position:absolute;left:12px;bottom:10px;font-size:11px;color:#8f8677;
+        background:#0007;padding:4px 8px;border-radius:6px;pointer-events:none}
+  #err{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:40px;
+       text-align:center;color:#e8b088}
+  .fps{position:absolute;right:10px;top:8px;font-size:11px;color:#867e6e;background:#0006;padding:2px 7px;border-radius:5px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <aside>
+    <h1>Impasto</h1>
+    <nav class="topnav"><a href="/">‹ Art Study</a><span class="cur">Paint</span></nav>
+    <div class="sub">Oil-paint studio — real brush relief, lit in real time. Drag the sun to rake the light across your strokes.</div>
+
+    <div class="grp">
+      <h2>Medium</h2>
+      <div class="media" id="media">
+        <button data-m="oil" class="on">Oil</button>
+        <button data-m="acrylic">Acrylic</button>
+        <button data-m="gouache">Gouache</button>
+        <button data-m="knife">Palette knife</button>
+      </div>
+    </div>
+
+    <div class="grp">
+      <h2>Brush</h2>
+      <div class="row"><label>Size <span id="vSize"></span></label><input id="size" type="range" min="4" max="150" value="58"></div>
+      <div class="row"><label>Bristle roughness <span id="vRough"></span></label><input id="rough" type="range" min="0" max="100" value="38"></div>
+      <div class="row"><label>Paint load <span id="vLoad"></span></label><input id="load" type="range" min="0" max="100" value="62"></div>
+      <div class="row"><label>Smear / viscosity <span id="vSmear"></span></label><input id="smear" type="range" min="0" max="100" value="52"></div>
+      <label class="chk"><input type="checkbox" id="dirty" checked> Pick up wet paint (dirty brush)</label>
+    </div>
+
+    <div class="grp">
+      <h2>Paint body &amp; light</h2>
+      <div class="row"><label>Paint thickness <span id="vThick"></span></label><input id="thick" type="range" min="0" max="100" value="60"></div>
+      <div class="row"><label>Relief / raking <span id="vRelief"></span></label><input id="relief" type="range" min="0" max="100" value="55"></div>
+      <div class="row"><label>Gloss — matte ↔ oil <span id="vGloss"></span></label><input id="gloss" type="range" min="0" max="100" value="58"></div>
+      <div class="row"><label>Light height <span id="vElev"></span></label><input id="elev" type="range" min="10" max="120" value="55"></div>
+      <div class="row"><label>Canvas tooth <span id="vTooth"></span></label><input id="tooth" type="range" min="0" max="100" value="42"></div>
+      <label class="chk"><input type="checkbox" id="anim"> Auto-sweep the light</label>
+    </div>
+
+    <div class="grp">
+      <h2>Colour</h2>
+      <div class="swatches" id="swatches"></div>
+      <div class="colorline">
+        <input type="color" id="color" value="#12386f">
+        <span style="color:var(--muted)">mix: subtractive (blue+yellow→green)</span>
+      </div>
+      <label class="chk"><input type="checkbox" id="km" checked> Kubelka–Munk pigment mixing</label>
+    </div>
+
+    <div class="grp">
+      <h2>Canvas</h2>
+      <div class="row"><label>Resolution <span id="vRes"></span></label>
+        <select id="res" style="width:100%;background:#2b261e;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px">
+          <option value="1024">1024 — fastest</option>
+          <option value="1536" selected>1536 — balanced</option>
+          <option value="2048">2048 — detail</option>
+        </select>
+      </div>
+      <div class="act" style="margin-top:8px">
+        <button id="undo">Undo stroke</button>
+        <button id="clear">Clear</button>
+        <button id="expLit">Export (lit)</button>
+        <button id="expFlat">Export (flat)</button>
+        <button id="expNrm">Export normal map</button>
+        <button id="expHt">Export height</button>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <div id="stageBox">
+      <canvas id="c" width="1536" height="1536"></canvas>
+      <div id="sun" title="Drag to move the light"></div>
+    </div>
+    <div id="hint">Draw with mouse / pen · <b>[</b> <b>]</b> size · <b>Ctrl+Z</b> undo · drag the sun to relight</div>
+    <div class="fps" id="fps"></div>
+    <div id="err"></div>
+  </main>
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const cvs = $('#c');
+let SIM = 1536;
+
+/* ---------------- WebGL bootstrap ---------------- */
+const gl = cvs.getContext('webgl2', {antialias:false, premultipliedAlpha:false, preserveDrawingBuffer:false});
+function fail(msg){ const e=$('#err'); e.style.display='flex'; e.innerHTML=msg; throw new Error(msg); }
+if(!gl) fail("This browser has no WebGL2. Try current Chrome, Edge or Firefox on a desktop.");
+const extF  = gl.getExtension('EXT_color_buffer_float');
+const extHF = gl.getExtension('EXT_color_buffer_half_float');
+if(!extF && !extHF) fail("WebGL2 float render targets are unavailable on this GPU/driver.");
+const linF = gl.getExtension('OES_texture_half_float_linear');
+const FILTER = linF ? gl.LINEAR : gl.NEAREST;
+
+/* ---------------- shader helpers ---------------- */
+const VS = `#version 300 es
+precision highp float;
+const vec2 P[3] = vec2[3](vec2(-1.,-1.), vec2(3.,-1.), vec2(-1.,3.));
+out vec2 vUv;
+void main(){ vec2 p = P[gl_VertexID]; vUv = p*0.5+0.5; gl_Position = vec4(p,0.,1.); }`;
+
+function sh(type, src){
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) fail("Shader error:<br><pre style='text-align:left;white-space:pre-wrap'>"+gl.getShaderInfoLog(s)+"</pre>");
+  return s;
+}
+function prog(fs){
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, VS));
+  gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if(!gl.getProgramParameter(p, gl.LINK_STATUS)) fail("Link error: "+gl.getProgramInfoLog(p));
+  return p;
+}
+
+const COMMON = `
+precision highp float;
+in vec2 vUv;
+uniform sampler2D uColor;   // rgb pigment, a = coverage
+uniform sampler2D uHeight;  // r = paint height, g = wetness
+uniform vec2 uRes;
+float hash(float n){ return fract(sin(n*127.1)*43758.5453123); }
+vec3 KS(vec3 c){ c = clamp(c, 0.0045, 0.996); return (1.0-c)*(1.0-c)/(2.0*c); }
+vec3 fromKS(vec3 ks){ return clamp(1.0 + ks - sqrt(ks*ks + 2.0*ks), 0.0, 1.0); }
+`;
+
+/* ---- stamp: lay bristle dabs, smear, deposit height ---- */
+const STAMP = prog(`#version 300 es
+${COMMON}
+layout(location=0) out vec4 oColor;
+layout(location=1) out vec4 oHeight;
+#define MAXD 40
+uniform vec4 uDab[MAXD];   // xy pos(texel), z radius, w load
+uniform vec4 uDabB[MAXD];  // xy dir(unit), z -, w -
+uniform int  uCount;
+uniform vec3 uBrush;
+uniform float uRough, uSmear, uThick, uMaxCov, uSeed, uDirty, uKM;
+uniform vec2 uDir;
+
+// evaluated ONCE per pixel (not per dab) using the dominant dab's local coords
+float bristle(float p, float R, float a, float seed){
+  float count = mix(14.0, 30.0, hash(seed*0.7 + 3.0));
+  // waver of the whole bundle as it travels (hash-lerp, no transcendental)
+  float ai = floor(a*0.035), af = fract(a*0.035);
+  float wav = mix(hash(ai+seed), hash(ai+1.0+seed), af*af*(3.0-2.0*af));
+  float x = ((p + (wav-0.5)*R*0.14*uRough)/R)*0.5 + 0.5;
+  float k = x*count;
+  float cell = floor(k), f = fract(k);
+  float present = step(uRough*0.8, hash(cell*1.31 + seed));
+  // travelling dry clumps
+  float clump = step(0.74, hash(floor(cell*0.5) + floor(a/(R*1.6)) + seed*3.0));
+  present *= 1.0 - clump*uRough;
+  float w = mix(0.35, 0.95, hash(cell*2.7 + seed*1.7));
+  float tri = 1.0 - abs(f-0.5)*2.0;
+  float b = smoothstep(1.0-w, 1.0, tri);
+  float base = 1.0 - uRough;               // rough=0 -> solid brush
+  return clamp(max(b*present, base), 0.0, 1.0);
+}
+vec3 kmMix(vec3 a, vec3 b, float t){
+  if(uKM < 0.5) return clamp(mix(a,b,t), 0.0, 1.0);
+  return fromKS(mix(KS(a), KS(b), t));
+}
+void main(){
+  vec2 pix = vUv * uRes;
+  vec4 c0 = texture(uColor, vUv);
+  vec4 h0 = texture(uHeight, vUv);
+  float wsum = 0.0, bestw = 0.0, bpr = 0.0, ba = 0.0, bR = 1.0;
+  vec2  dirAcc = uDir;
+  // cheap loop: falloff only. bristle comb is applied once, after.
+  for(int i=0;i<MAXD;i++){
+    if(i>=uCount) break;
+    vec2 dp = pix - uDab[i].xy;
+    float R = uDab[i].z;
+    float d2 = dot(dp,dp);
+    if(d2 > R*R) continue;
+    vec2 dir = uDabB[i].xy;
+    vec2 prp = vec2(-dir.y, dir.x);
+    float fall = 1.0 - smoothstep(0.42, 1.0, sqrt(d2)/R);
+    float wgt = uDab[i].w * fall;
+    if(wgt > bestw){ bestw = wgt; bpr = dot(dp,prp); ba = dot(dp,dir); bR = R; }
+    wsum += wgt;
+    dirAcc = dir;
+  }
+  if(wsum <= 0.0){ oColor = c0; oHeight = h0; return; }
+  float total = min(wsum * bristle(bpr, bR, ba, uSeed), 1.6);
+  if(total <= 0.0){ oColor = c0; oHeight = h0; return; }
+
+  float cov = c0.a;
+  vec3  pig = c0.rgb;
+  float wet = h0.g;
+
+  // dirty brush: bias deposit colour toward what's already wet on canvas
+  vec3 eff = mix(uBrush, pig, uDirty * clamp(wet,0.0,1.0) * 0.55 * step(0.02, cov));
+  float t = total / max(cov + total, 1e-3);
+  vec3 mixed = kmMix(pig, eff, t);
+
+  // smear: drag paint that's sitting behind the stroke direction
+  vec2 e = 1.0/uRes;
+  vec3 behind = texture(uColor, vUv - normalize(dirAcc+1e-5)*e*2.0).rgb;
+  mixed = mix(mixed, behind, uSmear * clamp(wet,0.0,1.0) * 0.5);
+
+  float nc = min(cov + total, uMaxCov);
+  float gain = mix(0.16, 1.6, uThick);
+  float nh = min(h0.r + total*gain, 4.5);
+  float nw = clamp(max(wet, total*2.2), 0.0, 1.0);
+
+  oColor  = vec4(mixed, nc);
+  oHeight = vec4(nh, nw, 0.0, 1.0);
+}`);
+
+/* ---- relax: wet paint levels & flows a touch, wetness dries ---- */
+const RELAX = prog(`#version 300 es
+${COMMON}
+layout(location=0) out vec4 oColor;
+layout(location=1) out vec4 oHeight;
+uniform vec2 uDir;
+uniform float uSmear, uDry;
+void main(){
+  vec4 c = texture(uColor, vUv);
+  vec4 h = texture(uHeight, vUv);
+  float w = h.g;
+  if(w < 0.012){ oColor = c; oHeight = h; return; }
+  vec2 e = 1.0/uRes;
+  vec3 cc = c.rgb;
+  vec3 ca = (
+    texture(uColor, vUv+vec2(e.x,0)).rgb + texture(uColor, vUv-vec2(e.x,0)).rgb +
+    texture(uColor, vUv+vec2(0,e.y)).rgb + texture(uColor, vUv-vec2(0,e.y)).rgb) * 0.25;
+  float ha = (
+    texture(uHeight, vUv+vec2(e.x,0)).r + texture(uHeight, vUv-vec2(e.x,0)).r +
+    texture(uHeight, vUv+vec2(0,e.y)).r + texture(uHeight, vUv-vec2(0,e.y)).r) * 0.25;
+  float k = 0.16 * w;
+  vec3 outc = mix(cc, ca, k);
+  float outh = mix(h.r, ha, k*0.35);
+  // directional flow toward brush travel
+  vec3 up = texture(uColor, vUv - uDir*e*1.6).rgb;
+  outc = mix(outc, up, 0.22 * w * uSmear);
+  oColor  = vec4(outc, c.a);
+  oHeight = vec4(outh, w * uDry, 0.0, 1.0);
+}`);
+
+/* ---- copy (snapshot / restore) ---- */
+const COPY = prog(`#version 300 es
+${COMMON}
+layout(location=0) out vec4 oColor;
+layout(location=1) out vec4 oHeight;
+void main(){ oColor = texture(uColor, vUv); oHeight = texture(uHeight, vUv); }`);
+
+/* ---- composite: normal-from-height + relief lighting ---- */
+const COMP = prog(`#version 300 es
+${COMMON}
+out vec4 frag;
+uniform float uRelief, uGloss, uTooth, uMode; // uMode: 0 lit, 1 flat, 2 normal, 3 height
+uniform vec3  uLight;   // xy dir on plane, z elevation
+uniform float uSeed;
+
+float sub(vec2 uv){
+  float f = mix(120.0, 300.0, uTooth);
+  vec2 g = uv * f;
+  float a = sin(g.x)*0.5+0.5;
+  float b = sin(g.y)*0.5+0.5;
+  float over = mod(floor(g.x)+floor(g.y),2.0) < 1.0 ? b : a;
+  float base = a*b*0.5 + over*0.5;
+  float grain = hash(dot(floor(uv*f*2.0), vec2(12.9,78.2))+uSeed)*0.3;
+  return (base*0.7 + grain);
+}
+float H(vec2 uv){
+  float ph = texture(uHeight, uv).r;
+  float cov = clamp(texture(uColor, uv).a, 0.0, 1.0);
+  float s = sub(uv) * mix(0.02, 0.16, uTooth) * (1.0 - cov*0.82);
+  return ph * mix(1.5, 16.0, uRelief) + s;
+}
+void main(){
+  vec2 e = 1.0/uRes;
+  vec4 cc = texture(uColor, vUv);
+  vec3 canvasCol = vec3(0.90, 0.865, 0.78);
+  vec3 base = mix(canvasCol, cc.rgb, clamp(cc.a,0.0,1.0));
+
+  if(uMode > 2.5){ float h = texture(uHeight,vUv).r/3.0; frag = vec4(vec3(h),1.0); return; }
+  if(uMode > 0.5 && uMode < 1.5){ frag = vec4(pow(base, vec3(0.95)), 1.0); return; }
+
+  float hx = H(vUv+vec2(e.x,0.)) - H(vUv-vec2(e.x,0.));
+  float hy = H(vUv+vec2(0.,e.y)) - H(vUv-vec2(0.,e.y));
+  vec3 N = normalize(vec3(-hx, -hy, 1.0));
+
+  if(uMode > 1.5 && uMode < 2.5){ frag = vec4(N*0.5+0.5, 1.0); return; }
+
+  vec3 L = normalize(vec3(uLight.xy, max(uLight.z,0.05)));
+  vec3 V = vec3(0.0,0.0,1.0);
+  vec3 Hh = normalize(L+V);
+  float diff = max(dot(N,L), 0.0);
+  float sp   = pow(max(dot(N,Hh),0.0), mix(6.0,46.0,uGloss)) * mix(0.03,0.9,uGloss);
+  float amb  = 0.42;
+  float ao   = mix(1.0, 0.8, clamp((abs(hx)+abs(hy))*3.0, 0.0, 1.0));
+  vec3 col = base * (amb + diff*(1.0-amb)) * ao + vec3(1.0,0.97,0.9)*sp*step(0.02, cc.a);
+  frag = vec4(pow(clamp(col,0.0,1.0), vec3(0.95)), 1.0);
+}`);
+
+/* ---------------- FBO state ---------------- */
+const C0 = gl.COLOR_ATTACHMENT0, C1 = gl.COLOR_ATTACHMENT1;
+function mkTex(){
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, SIM, SIM, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, FILTER);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, FILTER);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+function mkFbo(){
+  const color = mkTex(), height = mkTex();
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, C0, gl.TEXTURE_2D, color, 0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, C1, gl.TEXTURE_2D, height, 0);
+  const st = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+  if(st !== gl.FRAMEBUFFER_COMPLETE) fail("Framebuffer incomplete (0x"+st.toString(16)+").");
+  return {color, height, fbo};
+}
+let A, B, UNDO;
+function allocBuffers(){
+  [A,B,UNDO].forEach(s=>{ if(s){ gl.deleteTexture(s.color); gl.deleteTexture(s.height); gl.deleteFramebuffer(s.fbo);} });
+  A = mkFbo(); B = mkFbo(); UNDO = mkFbo();
+  clearAll();
+}
+function bindDraw(s){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, s.fbo);
+  gl.drawBuffers([C0, C1]);
+  gl.viewport(0,0,SIM,SIM);
+}
+function clearAll(){
+  for(const s of [A,B,UNDO]){
+    bindDraw(s);
+    gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+}
+const vao = gl.createVertexArray();
+function tri(){ gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+function bindSrc(p, s){
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, s.color);
+  gl.uniform1i(gl.getUniformLocation(p,'uColor'), 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, s.height);
+  gl.uniform1i(gl.getUniformLocation(p,'uHeight'), 1);
+  gl.uniform2f(gl.getUniformLocation(p,'uRes'), SIM, SIM);
+}
+function swap(){ const t = A; A = B; B = t; }
+
+/* ---------------- params ---------------- */
+const P = {
+  size:58, rough:.38, load:.62, smear:.52, thick:.60, relief:.55, gloss:.58,
+  elev:.55, tooth:.42, dirty:1, km:1,
+  brush:[0.07,0.22,0.44],
+  light:[-0.55, 0.55],
+};
+const MEDIA = {
+  oil:     {size:62, rough:38, load:66, smear:56, thick:66, gloss:60},
+  acrylic: {size:48, rough:30, load:44, smear:32, thick:44, gloss:38},
+  gouache: {size:44, rough:24, load:30, smear:16, thick:26, gloss:10},
+  knife:   {size:100, rough:6, load:88, smear:82, thick:92, gloss:52},
+};
+function hexToLin(h){
+  const n = parseInt(h.slice(1),16);
+  const s = [ (n>>16&255)/255, (n>>8&255)/255, (n&255)/255 ];
+  return s.map(v => v<=0.04045 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4));
+}
+
+/* ---------------- stroke input ---------------- */
+let drawing = false, last = null, strokeDist = 0, seed = 0, strokeDir = [1,0];
+const queue = [];               // pending dabs {x,y,r,load,dx,dy}
+
+function pointerPos(ev){
+  const r = cvs.getBoundingClientRect();
+  return [ (ev.clientX - r.left)/r.width * SIM,
+           (1 - (ev.clientY - r.top)/r.height) * SIM ];
+}
+function addSegment(from, to){
+  const dx = to[0]-from[0], dy = to[1]-from[1];
+  const dist = Math.hypot(dx,dy);
+  const rad = P.size * 0.5 * SIM/1536;
+  const step = Math.max(1.4, rad*0.32);
+  const n = Math.min(600, Math.max(1, Math.round(dist/step)));
+  let ux = dx/(dist||1), uy = dy/(dist||1);
+  if(dist > 0.6) strokeDir = [ux, uy];
+  const loadLen = (60 + P.load*2600) * (1 - P.rough*0.55);   // texels before dry
+  for(let i=1;i<=n;i++){
+    const t = i/n;
+    strokeDist += dist/n;
+    const dry = Math.exp(-strokeDist/loadLen);
+    const load = (0.10 + 0.95*P.load) * (0.18 + 0.82*dry);
+    queue.push({
+      x: from[0]+dx*t, y: from[1]+dy*t,
+      r: rad*(0.85+0.15*dry), load,
+      dx: strokeDir[0], dy: strokeDir[1]
+    });
+  }
+}
+function snapshotUndo(){
+  const p = COPY; gl.useProgram(p); bindSrc(p, A); bindDraw(UNDO); tri();
+}
+cvs.addEventListener('pointerdown', ev=>{
+  if(ev.button!==0) return;
+  cvs.setPointerCapture(ev.pointerId);
+  drawing = true; strokeDist = 0; seed = Math.random()*1000;
+  snapshotUndo();
+  last = pointerPos(ev);
+  wet = 200;
+  const rad = P.size*0.5*SIM/1536;
+  queue.push({x:last[0], y:last[1], r:rad, load:(0.10+0.95*P.load), dx:strokeDir[0], dy:strokeDir[1]});
+});
+cvs.addEventListener('pointermove', ev=>{
+  if(!drawing) return;
+  const evs = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [ev];
+  for(const e of evs){
+    const p = pointerPos(e);
+    addSegment(last, p);
+    last = p;
+  }
+  wet = 200;
+});
+function endStroke(){ drawing = false; last = null; wet = 260; }
+cvs.addEventListener('pointerup', endStroke);
+cvs.addEventListener('pointercancel', endStroke);
+
+/* ---------------- render loop ---------------- */
+let wet = 0;         // frames of relax still to run
+let fpsT = performance.now(), fpsN = 0;
+const MAXD = 40;
+const dabA = new Float32Array(MAXD*4), dabB = new Float32Array(MAXD*4);
+
+function stampBatch(){
+  if(!queue.length) return;
+  const n = Math.min(MAXD, queue.length);
+  for(let i=0;i<n;i++){
+    const d = queue[i];
+    dabA[i*4]=d.x; dabA[i*4+1]=d.y; dabA[i*4+2]=d.r; dabA[i*4+3]=d.load;
+    dabB[i*4]=d.dx; dabB[i*4+1]=d.dy; dabB[i*4+2]=0; dabB[i*4+3]=0;
+  }
+  queue.splice(0, n);
+  const p = STAMP; gl.useProgram(p); bindSrc(p, A);
+  gl.uniform4fv(gl.getUniformLocation(p,'uDab'),  dabA);
+  gl.uniform4fv(gl.getUniformLocation(p,'uDabB'), dabB);
+  gl.uniform1i(gl.getUniformLocation(p,'uCount'), n);
+  gl.uniform3fv(gl.getUniformLocation(p,'uBrush'), P.brush);
+  gl.uniform1f(gl.getUniformLocation(p,'uRough'), P.rough);
+  gl.uniform1f(gl.getUniformLocation(p,'uSmear'), P.smear);
+  gl.uniform1f(gl.getUniformLocation(p,'uThick'), P.thick);
+  gl.uniform1f(gl.getUniformLocation(p,'uMaxCov'), 1.35);
+  gl.uniform1f(gl.getUniformLocation(p,'uSeed'), seed);
+  gl.uniform1f(gl.getUniformLocation(p,'uDirty'), P.dirty?1:0);
+  gl.uniform1f(gl.getUniformLocation(p,'uKM'), P.km?1:0);
+  gl.uniform2f(gl.getUniformLocation(p,'uDir'), strokeDir[0], strokeDir[1]);
+  bindDraw(B); tri(); swap();
+}
+function relaxStep(){
+  const p = RELAX; gl.useProgram(p); bindSrc(p, A);
+  gl.uniform1f(gl.getUniformLocation(p,'uSmear'), P.smear);
+  gl.uniform1f(gl.getUniformLocation(p,'uDry'), 0.955);
+  gl.uniform2f(gl.getUniformLocation(p,'uDir'), strokeDir[0], strokeDir[1]);
+  bindDraw(B); tri(); swap();
+}
+function composite(mode){
+  const p = COMP; gl.useProgram(p); bindSrc(p, A);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0,0,SIM,SIM);
+  gl.uniform1f(gl.getUniformLocation(p,'uRelief'), P.relief);
+  gl.uniform1f(gl.getUniformLocation(p,'uGloss'), P.gloss);
+  gl.uniform1f(gl.getUniformLocation(p,'uTooth'), P.tooth);
+  gl.uniform1f(gl.getUniformLocation(p,'uMode'), mode||0);
+  gl.uniform1f(gl.getUniformLocation(p,'uSeed'), 7.0);
+  const lz = P.elev;
+  gl.uniform3f(gl.getUniformLocation(p,'uLight'), P.light[0], P.light[1], lz);
+  tri();
+}
+
+let animT = 0;
+function frame(){
+  if($('#anim').checked){
+    animT += 0.016;
+    P.light[0] = Math.cos(animT*0.9);
+    P.light[1] = Math.sin(animT*0.9);
+    placeSun();
+  }
+  // multiple stamp batches if the user drew fast; never let the backlog explode
+  if(queue.length > 900) queue.splice(0, queue.length - 900);
+  let guard = 10;
+  while(queue.length && guard-- > 0) stampBatch();
+  if(wet > 0){ relaxStep(); wet--; }
+  composite(0);
+
+  fpsN++;
+  const now = performance.now();
+  if(now - fpsT > 500){ $('#fps').textContent = Math.round(fpsN*1000/(now-fpsT)) + ' fps'; fpsT = now; fpsN = 0; }
+  requestAnimationFrame(frame);
+}
+
+/* ---------------- export ---------------- */
+function download(name){
+  composite(name==='lit'?0 : name==='flat'?1 : name==='normal'?2 : 3);
+  cvs.toBlob(b=>{
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b); a.download = 'impasto-'+name+'.png'; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  }, 'image/png');
+}
+$('#expLit').onclick  = ()=>download('lit');
+$('#expFlat').onclick = ()=>download('flat');
+$('#expNrm').onclick  = ()=>download('normal');
+$('#expHt').onclick   = ()=>download('height');
+
+/* ---------------- undo / clear ---------------- */
+$('#undo').onclick = ()=>{
+  const p = COPY; gl.useProgram(p); bindSrc(p, UNDO); bindDraw(B); tri(); swap();
+  wet = 0;
+};
+$('#clear').onclick = ()=>{ clearAll(); };
+
+/* ---------------- sliders ---------------- */
+function bind(id, key, fn){
+  const el = $('#'+id);
+  const upd = ()=>{ P[key] = fn ? fn(+el.value) : +el.value/100; paintLabels(); };
+  el.addEventListener('input', upd); upd();
+}
+function paintLabels(){
+  $('#vSize').textContent  = Math.round(P.size);
+  $('#vRough').textContent = Math.round(P.rough*100);
+  $('#vLoad').textContent  = Math.round(P.load*100);
+  $('#vSmear').textContent = Math.round(P.smear*100);
+  $('#vThick').textContent = Math.round(P.thick*100);
+  $('#vRelief').textContent= Math.round(P.relief*100);
+  $('#vGloss').textContent = Math.round(P.gloss*100);
+  $('#vElev').textContent  = Math.round(P.elev*100);
+  $('#vTooth').textContent = Math.round(P.tooth*100);
+}
+bind('size','size', v=>v);
+bind('rough','rough'); bind('load','load'); bind('smear','smear');
+bind('thick','thick'); bind('relief','relief'); bind('gloss','gloss');
+bind('elev','elev', v=>v/100); bind('tooth','tooth');
+$('#dirty').onchange = e=> P.dirty = e.target.checked;
+$('#km').onchange = e=> P.km = e.target.checked;
+
+/* ---------------- media presets ---------------- */
+$('#media').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  [...$('#media').children].forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  const m = MEDIA[b.dataset.m];
+  for(const k in m){
+    const el = $('#'+k); if(el){ el.value = m[k]; el.dispatchEvent(new Event('input')); }
+  }
+});
+
+/* ---------------- colour ---------------- */
+const PALETTE = ['#1c1a17','#3a2a1c','#6b3b1e','#a8571f','#d59a3c','#e7d18a',
+                 '#25543a','#3f7d4e','#12386f','#2f6fae','#7db6d6','#e9e6da',
+                 '#8a1f2b','#c94b3b','#5a3a6b','#f2efe6'];
+const sw = $('#swatches');
+PALETTE.forEach((h,i)=>{
+  const el = document.createElement('i');
+  el.style.background = h; el.dataset.hex = h;
+  if(h==='#12386f') el.classList.add('on');
+  el.onclick = ()=>{
+    [...sw.children].forEach(x=>x.classList.remove('on')); el.classList.add('on');
+    $('#color').value = h; P.brush = hexToLin(h);
+  };
+  sw.appendChild(el);
+});
+$('#color').addEventListener('input', e=>{
+  P.brush = hexToLin(e.target.value);
+  [...sw.children].forEach(x=>x.classList.remove('on'));
+});
+P.brush = hexToLin($('#color').value);
+
+/* ---------------- sun / light drag ---------------- */
+const sun = $('#sun'), box = $('#stageBox');
+function placeSun(){
+  const r = cvs.getBoundingClientRect(), br = box.getBoundingClientRect();
+  const x = (P.light[0]*0.5+0.5) * r.width  + (r.left-br.left);
+  const y = (1-(P.light[1]*0.5+0.5)) * r.height + (r.top-br.top);
+  sun.style.left = x+'px'; sun.style.top = y+'px';
+}
+let sunDrag = false;
+sun.addEventListener('pointerdown', e=>{ sunDrag=true; sun.classList.add('drag'); sun.setPointerCapture(e.pointerId); e.preventDefault(); });
+window.addEventListener('pointermove', e=>{
+  if(!sunDrag) return;
+  const r = cvs.getBoundingClientRect();
+  let nx = (e.clientX - r.left)/r.width, ny = (e.clientY - r.top)/r.height;
+  P.light[0] = Math.max(-1.4, Math.min(1.4, (nx*2-1)));
+  P.light[1] = Math.max(-1.4, Math.min(1.4, -(ny*2-1)));
+  $('#anim').checked = false;
+  placeSun();
+});
+window.addEventListener('pointerup', ()=>{ sunDrag=false; sun.classList.remove('drag'); });
+window.addEventListener('resize', placeSun);
+
+/* ---------------- keyboard ---------------- */
+window.addEventListener('keydown', e=>{
+  if(e.key==='[' || e.key===']'){
+    const el = $('#size'); el.value = +el.value + (e.key===']'?6:-6);
+    el.dispatchEvent(new Event('input'));
+  }
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); $('#undo').click(); }
+});
+
+/* ---------------- resolution ---------------- */
+$('#res').addEventListener('change', e=>{
+  SIM = +e.target.value;
+  cvs.width = SIM; cvs.height = SIM;
+  allocBuffers();
+  placeSun();
+});
+$('#vRes').textContent = '';
+
+/* ---------------- go ---------------- */
+gl.disable(gl.BLEND);
+allocBuffers();
+paintLabels();
+placeSun();
+requestAnimationFrame(frame);
+setTimeout(placeSun, 60);
+</script>
+</body>
+</html>

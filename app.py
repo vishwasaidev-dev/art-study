@@ -651,6 +651,13 @@ async def index(request: Request) -> Response:
     return HTMLResponse(page.read_text(encoding="utf-8"), headers={"Cache-Control": "no-cache"})
 
 
+async def paint(request: Request) -> Response:
+    page = BASE / "web" / "paint.html"
+    if not page.exists():
+        return PlainTextResponse("paint UI missing", status_code=500)
+    return HTMLResponse(page.read_text(encoding="utf-8"), headers={"Cache-Control": "no-cache"})
+
+
 async def health(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "app": "art-study", "harvard": bool(HARVARD_KEY)})
 
@@ -658,6 +665,7 @@ async def health(request: Request) -> JSONResponse:
 def build_app() -> Starlette:
     return Starlette(routes=[
         Route("/", index),
+        Route("/paint", paint),
         Route("/health", health),
         Route("/api/search", api_search),
         Route("/api/detail", api_detail),

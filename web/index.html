@@ -18,6 +18,11 @@
   aside { background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
   .search { padding:13px; border-bottom:1px solid var(--line); }
   .search h1 { font-size:14px; letter-spacing:.15em; text-transform:uppercase; margin:0 0 9px; color:var(--accent); font-weight:600; }
+  .topnav { display:flex; gap:6px; margin:0 0 10px; font-size:11px; }
+  .topnav a, .topnav .cur { padding:3px 9px; border-radius:999px; text-decoration:none; }
+  .topnav a { color:var(--dim); border:1px solid var(--line); }
+  .topnav a:hover { border-color:var(--accent); color:var(--accent); }
+  .topnav .cur { color:var(--accent); border:1px solid var(--accent); background:#2a2212; }
   .qrow { display:flex; gap:6px; }
   input[type=text] { flex:1; min-width:0; padding:8px 10px; background:#0e0e12; border:1px solid var(--line);
     border-radius:6px; color:var(--text); font-size:14px; }
@@ -128,6 +133,7 @@
   <aside>
     <div class="search">
       <h1>Art Study</h1>
+      <nav class="topnav"><span class="cur">Study</span><a href="/paint">Paint ›</a></nav>
       <div class="qrow">
         <input id="q" type="text" list="artists" placeholder="Artist name — type or pick" autocomplete="off">
         <button id="go">Search</button>
